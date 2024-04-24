@@ -6,6 +6,7 @@
 import os
 import sys
 import argparse
+import re
 
 
 # FORMAT fields requiring recalculation
@@ -72,6 +73,43 @@ def decompose_GT(GT, FORMAT, position):
     return ':'.join(newgtfields)
 
 
+def decompose_poly_GT(GT, FORMAT, position):
+    """Transform multiallelic and highploidy GT to biallelic GT
+
+    Remove fields that require calculation, and take relevant subset from
+    fields with data for multiple ALTs.
+
+    >>> decompose_GT('1/2:1,8,12:21:99:766,319,340,191,0,201',
+                     'GT:AD:DP:GQ:PL', 0)
+    '0/1:1,8:21:99'
+    """
+    newgtfields = []
+    gtfields = GT.split(':')
+    formatfields = FORMAT.split(':')
+    alts   = re.split('[|/]', gtfields[0])
+    ploidy = len(alts)
+
+    c = 0
+    for g in alts:
+        if g == str(position+1):
+            c+=1
+    new_gt = []
+    new_gt.extend(["0"] * (ploidy - c))
+    new_gt.extend(["1"] * c)
+    
+    for field in zip(formatfields, gtfields):
+        if field[0] in FORMAT_remove:
+            pass
+        elif field[0] == 'GT':
+            newgtfields.append("/".join(new_gt))
+        elif field[0] == 'AD':
+            values = field[1].split(',')
+            newgtfields.append(','.join([values[0], values[position+1]]))
+        else:
+            newgtfields.append(field[1])
+    return ':'.join(newgtfields)
+
+
 def decompose_multiallelic(row):
     """Split, decompose, reassemble, and return rows.
 
@@ -84,7 +122,7 @@ def decompose_multiallelic(row):
     for position, alt in enumerate(ALT.split(',')):
          info = decompose_INFO(INFO, position)
          fmat = decompose_FORMAT(FORMAT)
-         gt = decompose_GT(GT, FORMAT, position)
+         gt = decompose_poly_GT(GT, FORMAT, position)
          outrows.append('\t'.join([CHROM, POS, ID,
                                    REF, alt, QUAL,
                                    FILTER, info, fmat, gt]))
